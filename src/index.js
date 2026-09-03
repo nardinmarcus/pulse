@@ -10,6 +10,39 @@ export { PulseCore };
 const STATUS_COLOR = { up: '#337a5b', down: '#b0402f', paused: '#8a8578', new: '#777777' };
 const STATUS_LABEL = { up: 'UP', down: 'DOWN', paused: 'PAUSED', new: 'NEW' };
 
+// 公开只读端点放开跨域，方便舰队其他页面（hub 等）取用
+const CORS = { 'access-control-allow-origin': '*' };
+
+/** 快照 → 集成用简要视图；host 从 target 提取（push/self 无 host）。 */
+function briefFrom(snap) {
+  return {
+    now: snap.now,
+    checks: snap.checks.map((c) => ({
+      slug: c.slug,
+      name: c.name,
+      type: c.type,
+      platform: c.platform,
+      status: c.status,
+      ms: c.lastMs,
+      uptime90: c.uptime90,
+      lastErr: c.status === 'down' ? c.lastErr : '',
+      host: hostOf(c),
+    })),
+  };
+}
+
+function hostOf(c) {
+  if (c.type === 'http') {
+    const m = /^https?:\/\/([^/]+)/.exec(c.target || '');
+    return m ? m[1].toLowerCase() : null;
+  }
+  if (c.type === 'tcp') {
+    const m = /^(?:tcp:\/\/)?([^/:]+):(\d+)$/i.exec(c.target || '');
+    return m ? m[1].toLowerCase() : null;
+  }
+  return null;
+}
+
 const core = (env) => env.CORE.get(env.CORE.idFromName('core'));
 
 const json = (data, status = 200, headers = {}) =>
@@ -34,11 +67,16 @@ export default {
       }
 
       if (path === '/health') {
-        return json({ ok: true, ts: Date.now() });
+        return json({ ok: true, ts: Date.now() }, 200, CORS);
       }
 
       if (path === '/api/status' && method === 'GET') {
-        return json(await core(env).getSnapshot());
+        return json(await core(env).getSnapshot(), 200, CORS);
+      }
+
+      // 轻量端点：给 hub 等外部集成用（~2KB，无折线/条带）
+      if (path === '/api/brief' && method === 'GET') {
+        return json(briefFrom(await core(env).getSnapshot()), 200, CORS);
       }
 
       // ── 徽章 ──

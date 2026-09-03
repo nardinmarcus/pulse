@@ -13,9 +13,11 @@ function clock(ts) {
 }
 
 const GROUP_EN = {
-  Content: 'CONTENT', Network: 'NETWORK', Automation: 'AUTOMATION',
-  API: 'API', Platform: 'PLATFORM',
+  Content: 'CONTENT', Design: 'DESIGN', Nav: 'NAV', Network: 'NETWORK',
+  Automation: 'AUTOMATION', API: 'API', Infra: 'INFRA', Platform: 'PLATFORM',
 };
+
+const PLATFORM_TAG = { cloudflare: 'CF', vercel: 'VERCEL', vps: 'VPS', other: '' };
 
 const stripClass = (d) =>
   d.ratio == null ? 'n' : d.ratio >= 0.999 ? 'u' : d.ratio >= 0.95 ? 'w' : 'd';
@@ -39,13 +41,14 @@ function row(c, now) {
     : `<svg viewBox="0 0 132 30" width="132" height="30" aria-hidden="true">${sparkline(c.series24, now)}</svg>`;
 
   const host = c.type === 'push' ? '定期打点' : esc(c.target.replace(/^https?:\/\//, '').replace(/\/$/, ''));
+  const plat = PLATFORM_TAG[c.platform] || '';
 
   return `<div class="row ${esc(status)}" title="${esc(title)}">
   <div class="who">
     <span class="dot"></span>
     <span class="id"><b>${esc(c.name)}</b><small>${esc(c.note)}</small></span>
   </div>
-  <span class="host">${host}</span>
+  <span class="host">${host}${plat ? ` <i class="plat">${plat}</i>` : ''}</span>
   <span class="metric m90"><label>90日</label><b>${fmtUptime(c.uptime90)}</b></span>
   <span class="metric mlat"><label>延迟</label><b>${c.lastMs != null ? fmtMs(c.lastMs) : '—'}</b></span>
   <span class="spark">${spark}</span>
@@ -181,6 +184,8 @@ a{color:var(--ok); text-decoration:none}
   100%{box-shadow:0 0 0 9px transparent}}
 .host{grid-area:host; font-family:var(--mono); font-size:11.5px; color:var(--muted);
   overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+.host .plat{font-style:normal; font-size:8.5px; letter-spacing:.14em; color:var(--muted);
+  border:1px solid var(--hair); border-radius:2px; padding:0 3px; margin-left:6px; opacity:.8}
 .metric{display:flex; flex-direction:column; align-items:flex-end; gap:1px}
 .metric label{font-family:var(--mono); font-size:9.5px; letter-spacing:.14em; color:var(--muted)}
 .metric b{font-family:var(--mono); font-size:13.5px; font-weight:500; font-variant-numeric:tabular-nums}

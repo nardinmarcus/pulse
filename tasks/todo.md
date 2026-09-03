@@ -46,6 +46,22 @@
 
 - [x] 5.1 推送 github.com/nardinmarcus/pulse（public，随舰队其他仓库惯例；推送前扫过无真实密钥）
 
+## Phase 6 · 三渠道盘点 + hub 集成（2026-09-04）
+
+- [x] 6.1 台账盘点：CT 日志（namooca.com 17 子域 + nardinmarcus.top 10）· SSH VPS（docker/systemd/openresty）· Vercel 指纹（x-vercel-* 响应头；CLI token 失效改走此路）
+- [x] 6.2 新增 12 条检查（icon/taste/rss/prompt-optimizer/nav×3/vpn×3/derp/bridge/umami/sub2api/proxy），共 29 条；`platform` 字段（cloudflare/vercel/vps）入库 + 页面徽标
+- [x] 6.3 checks 表加 platform 列（ALTER 迁移）；/api/brief 增加 type/platform 供 hub 匹配
+- [x] 6.4 hub 集成：全量 TOOLS（21 项）+ 卡片状态点 + 舰队健康卡（18/19，点击直达脉搏）+ ⌘K 状态点与 Pulse 入口 + 60s 静默刷新；30s 服务端缓存、失败降级
+- [x] 6.5 hub 上线验收：绿/红双态、palette 搜索、真实数据 18/19
+
+## 盘点结论（2026-09-04 存档）
+
+- **真实故障 3 件**（都指向 VPS openresty）：newapi→HTTP 526（CF→源站证书无效，容器本身在跑 :3000）；proxy→HTTP 525（SSL 握手失败，用途待确认）；sub2api→502（openresty 在、上游不在）
+- namooca.com 根域名无响应（未配站点/空置）；image.nardinmarcus.top 已死（老图床，现役为 image.namooca.com）；n8n-claw 休眠（ClawCloud 免费档）
+- 无法拨测：hermes-gateway（systemd，无公网端点）、3x-ui（:8443，公开状态页不公示基础设施端口）
+- nav / navi 为同一导航页双部署（CF / Vercel）
+- Vercel CLI token 失效，如需列 Vercel 项目清单需 `vercel login` 重登
+
 ## Backlog
 
 - [ ] 通知通道实测（TELEGRAM_BOT_TOKEN / NOTIFY_WEBHOOK_URL 配置后发真消息）

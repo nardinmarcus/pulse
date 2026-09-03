@@ -13,7 +13,7 @@ CREATE TABLE IF NOT EXISTS checks(
   method TEXT DEFAULT 'GET', accept TEXT DEFAULT '[200]', keyword TEXT DEFAULT '',
   interval_s INTEGER DEFAULT 60, timeout_s INTEGER DEFAULT 10, follow_redirects INTEGER DEFAULT 1,
   enabled INTEGER DEFAULT 1, note TEXT DEFAULT '', push_token TEXT DEFAULT '',
-  ord INTEGER DEFAULT 0, cfg TEXT DEFAULT '', created_at INTEGER, updated_at INTEGER);
+  platform TEXT DEFAULT '', ord INTEGER DEFAULT 0, cfg TEXT DEFAULT '', created_at INTEGER, updated_at INTEGER);
 CREATE TABLE IF NOT EXISTS state(
   slug TEXT PRIMARY KEY, status TEXT DEFAULT 'new', since INTEGER DEFAULT 0,
   fails INTEGER DEFAULT 0, incident_open INTEGER DEFAULT 0,
@@ -53,6 +53,8 @@ export class PulseCore extends DurableObject {
 
   ensureSchema() {
     this.sql().exec(SCHEMA);
+    // 轻量迁移：v1 表没有 platform 列（已存在则忽略）
+    try { this.sql().exec("ALTER TABLE checks ADD COLUMN platform TEXT DEFAULT ''"); } catch { /* 已有该列 */ }
   }
 
   /** checks-as-code：按 slug 增量同步 src/checks.js 的配置到库。 */
@@ -68,21 +70,22 @@ export class PulseCore extends DurableObject {
         const token = c.type === 'push' ? genToken(c.slug) : '';
         this.sql().exec(
           `INSERT INTO checks(slug,name,grp,type,target,method,accept,keyword,interval_s,timeout_s,
-             follow_redirects,enabled,note,push_token,ord,cfg,created_at,updated_at)
-           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+             follow_redirects,enabled,note,push_token,platform,ord,cfg,created_at,updated_at)
+           VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
           c.slug, c.name, c.grp, c.type, c.target || '', c.method || 'GET',
           JSON.stringify(c.accept || [200]), c.keyword || '', c.interval_s || 60, c.timeout_s ?? 10,
           c.follow_redirects === 0 ? 0 : 1, c.enabled === 0 ? 0 : 1, c.note || '', token,
-          i, cfg, now, now);
+          c.platform || '', i, cfg, now, now);
         this.sql().exec('INSERT OR IGNORE INTO state(slug) VALUES(?)', c.slug);
       } else if (cur.cfg !== cfg) {
         // 配置变了：更新检查字段；push token 保留
         this.sql().exec(
           `UPDATE checks SET name=?,grp=?,type=?,target=?,method=?,accept=?,keyword=?,interval_s=?,
-             timeout_s=?,follow_redirects=?,enabled=?,note=?,ord=?,cfg=?,updated_at=? WHERE slug=?`,
+             timeout_s=?,follow_redirects=?,enabled=?,note=?,platform=?,ord=?,cfg=?,updated_at=? WHERE slug=?`,
           c.name, c.grp, c.type, c.target || '', c.method || 'GET',
           JSON.stringify(c.accept || [200]), c.keyword || '', c.interval_s || 60, c.timeout_s ?? 10,
-          c.follow_redirects === 0 ? 0 : 1, c.enabled === 0 ? 0 : 1, c.note || '', i, cfg, now, c.slug);
+          c.follow_redirects === 0 ? 0 : 1, c.enabled === 0 ? 0 : 1, c.note || '', c.platform || '',
+          i, cfg, now, c.slug);
         // 停用/恢复同步进状态机
         const st = this.stateOf(c.slug);
         if (c.enabled === 0 && st.status !== 'paused') this.applyPause(c.slug, st);
@@ -270,7 +273,7 @@ export class PulseCore extends DurableObject {
         ?? (samples24.length > 0 ? samples24.filter((x) => x.ok).length / samples24.length : null);
       out.push({
         slug: c.slug, name: c.name, grp: c.grp, note: c.note, type: c.type,
-        target: c.type === 'self' ? 'this /health' : c.target,
+        platform: c.platform || '', target: c.type === 'self' ? 'this /health' : c.target,
         interval_s: c.interval_s, enabled: !!c.enabled,
         status: c.enabled ? st.status : STATUS.PAUSED,
         since: st.since || 0, lastRun: st.last_run || 0,
@@ -392,6 +395,7 @@ export class PulseCore extends DurableObject {
 function normalizeCheck(c) {
   return {
     slug: c.slug, name: c.name, grp: c.grp, type: c.type, target: c.target || '',
+    platform: c.platform || '',
     method: c.method || 'GET', accept: c.accept || [200], keyword: c.keyword || '',
     interval_s: c.interval_s || 60, timeout_s: c.timeout_s ?? 10,
     follow_redirects: c.follow_redirects === 0 ? 0 : 1, enabled: c.enabled === 0 ? 0 : 1,

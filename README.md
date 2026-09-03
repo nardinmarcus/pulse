@@ -25,6 +25,7 @@ The scheduling is self-healing: each tick arms the next Durable Object alarm 60 
 
 ## Features
 
+- **Full fleet ledger** — every deployment across Cloudflare, Vercel and the VPS in one config file, tagged with its `platform`; 29 checks and counting
 - **Four check types** — `http` (status codes, keyword, redirect policy), `tcp` (socket handshake via `connect()`), `push` (reverse heartbeat: the target pings `/push/<token>`, stale after 2× interval), `self` (Pulse watches itself)
 - **Honest states** — a single failed probe flips a check to `down` immediately; the *incident* (and the notification) only opens on the 2nd consecutive failure, filtering single flaps. Recovery auto-closes the incident and notifies with the outage duration
 - **Public status page** — SSR, bilingual (中文/EN), paper-and-ink theme with a hand-drawn ECG line as the only decoration; flatlines red during incidents; auto-refreshes by swapping `<body>` every 30s; zero frameworks, works without JS
@@ -77,6 +78,7 @@ Disabled checks ship as `enabled: 0` — shown grey on the page, probed never. `
 |---|---|
 | `GET /` | status page (SSR HTML) |
 | `GET /api/status` | full snapshot JSON (checks, series, incidents) |
+| `GET /api/brief` | light per-check view (`/api/brief` powers [hub.namooca.com](https://hub.namooca.com)) — CORS open |
 | `GET /health` | liveness for the self-check |
 | `GET /badge/<slug>.svg` · `/badge/<slug>/uptime.svg` | shields-flat badges |
 | `POST /push/<token>` | heartbeat ping (GET works too) |
