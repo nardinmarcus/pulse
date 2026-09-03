@@ -1,0 +1,10 @@
+# 本地开发变量（复制为 .dev.vars；生产用 wrangler secret put 设置同名变量）
+ADMIN_TOKEN=dev-admin-token
+PULSE_DEV=1
+PUBLIC_URL=http://127.0.0.1:8791
+TICK_DEDUP_MS=0
+
+# 通知通道（均可选；生产用 wrangler secret put 配置）
+# NOTIFY_WEBHOOK_URL=https://n8n.example.com/webhook/pulse
+# TELEGRAM_BOT_TOKEN=123456:ABC
+# TELEGRAM_CHAT_ID=123456789

@@ -1,0 +1,24 @@
+name = "pulse"
+main = "src/index.js"
+compatibility_date = "2026-06-01"
+
+# 自定义域（首次部署时由 wrangler 创建；失败则注释掉改用 workers.dev）
+routes = [{ pattern = "pulse.namooca.com", custom_domain = true }]
+
+# 单例 Durable Object：存储 + 状态机 + 拨测都在里面
+[durable_objects]
+bindings = [{ name = "CORE", class_name = "PulseCore" }]
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["PulseCore"]
+
+# 每分钟拨测：DO alarm 链为主（自续自愈），cron 注册为冗余；tick 内 45s 去重
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
+
+[vars]
+PUBLIC_URL = "https://pulse.namooca.com"
