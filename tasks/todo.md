@@ -42,6 +42,10 @@
 - [x] 4.4 生产验收：/api/status 全绿（blogman 边缘 296ms）· vps-tcp 握手 150ms · 徽章/health 200
 - [x] 4.5 README ×2（中英）+ 手动 tick 管理路由
 
+## Phase 5 · GitHub（2026-09-04）
+
+- [x] 5.1 推送 github.com/nardinmarcus/pulse（public，随舰队其他仓库惯例；推送前扫过无真实密钥）
+
 ## Backlog
 
 - [ ] 通知通道实测（TELEGRAM_BOT_TOKEN / NOTIFY_WEBHOOK_URL 配置后发真消息）
