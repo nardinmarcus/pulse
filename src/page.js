@@ -288,7 +288,7 @@ footer .dotlink{color:var(--muted); font-weight:700}
     ${incidentsSection(snap.incidents)}
   </main>
   <footer>
-    <span>每分钟自 Cloudflare 边缘探测 · 每 30 秒自动刷新 · UTC+8</span>
+    <span>按检查间隔自 Cloudflare 边缘探测 · 状态每 30 秒刷新 · 历史图表与在线率每日更新 / History updated daily · UTC+8</span>
     <span><a class="dotlink" href="/admin" title="admin">·</a> © 2026 Namoo</span>
   </footer>
 </div>

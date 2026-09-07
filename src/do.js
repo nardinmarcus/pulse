@@ -4,7 +4,7 @@ import { DurableObject } from 'cloudflare:workers';
 import { connect } from 'cloudflare:sockets';
 import { CHECKS } from './checks.js';
 import { isDue, transition, pauseDecision, resumeDecision, STATUS } from './lib/model.js';
-import { hourKey, dayStrip, uptime, series24, summarize } from './lib/rollup.js';
+import { hourKey, dayKey, dayStrip, uptime, series24, summarize } from './lib/rollup.js';
 import { buildMessage } from './lib/notify.js';
 
 const SCHEMA = `
@@ -23,10 +23,14 @@ CREATE TABLE IF NOT EXISTS state(
 CREATE TABLE IF NOT EXISTS samples(
   slug TEXT, ts INTEGER, ok INTEGER, ms INTEGER DEFAULT 0, code INTEGER DEFAULT 0, err TEXT DEFAULT '');
 CREATE INDEX IF NOT EXISTS ix_samples_slug_ts ON samples(slug, ts);
+CREATE INDEX IF NOT EXISTS ix_samples_ts ON samples(ts);
 CREATE TABLE IF NOT EXISTS buckets(
   slug TEXT, hour INTEGER, total INTEGER DEFAULT 0, ups INTEGER DEFAULT 0,
   ms_sum INTEGER DEFAULT 0, ms_n INTEGER DEFAULT 0, ms_max INTEGER DEFAULT 0,
   PRIMARY KEY(slug, hour));
+CREATE INDEX IF NOT EXISTS ix_buckets_hour ON buckets(hour);
+CREATE TABLE IF NOT EXISTS history_cache(
+  slug TEXT PRIMARY KEY, updated_at INTEGER, payload TEXT);
 CREATE TABLE IF NOT EXISTS incidents(
   id INTEGER PRIMARY KEY AUTOINCREMENT, slug TEXT, started INTEGER, ended INTEGER DEFAULT 0,
   cause TEXT DEFAULT '', last_err TEXT DEFAULT '');
@@ -63,8 +67,9 @@ export class PulseCore extends DurableObject {
     const now = Date.now();
     const rows = [...this.sql().exec('SELECT slug, cfg, push_token FROM checks')];
     const have = new Map(rows.map((r) => [r.slug, r]));
-    CHECKS.forEach((c, i) => {
-      const cfg = JSON.stringify(normalizeCheck(c));
+    CHECKS.forEach((input, i) => {
+      const c = normalizeCheck(input);
+      const cfg = JSON.stringify(c);
       const cur = have.get(c.slug);
       if (!cur) {
         const token = c.type === 'push' ? genToken(c.slug) : '';
@@ -134,7 +139,7 @@ export class PulseCore extends DurableObject {
     const now = Date.now();
     // ping_last 在 state 表（心跳打点时刻），须 join 进来
     const checks = [...this.sql().exec(
-      'SELECT c.*, s.ping_last FROM checks c LEFT JOIN state s ON s.slug=c.slug')];
+      'SELECT c.*, s.ping_last, s.last_run FROM checks c LEFT JOIN state s ON s.slug=c.slug')];
     // 心跳检查每分钟都要判 staleness（不按自身 interval 轮询）；其余到期才探测
     const due = checks.filter((c) => c.type === 'push'
       ? !!c.enabled
@@ -242,7 +247,7 @@ export class PulseCore extends DurableObject {
   // ── 维护：保留期清理 ─────────────────────────────────────────
 
   maintain(now) {
-    // 每小时（分钟对齐 7 分）做一次清理，省写入
+    // 每15分钟（第7/22/37/52分）按时间索引清理，只扫描过期范围
     if (new Date(now).getUTCMinutes() % 15 !== 7) return;
     this.sql().exec('DELETE FROM samples WHERE ts < ?', now - RETAIN_SAMPLES_MS);
     this.sql().exec('DELETE FROM buckets WHERE hour < ?', hourKey(now) - RETAIN_BUCKETS_MS);
@@ -260,17 +265,9 @@ export class PulseCore extends DurableObject {
     const out = [];
     for (const c of checks) {
       const st = this.stateOf(c.slug);
-      const samples24 = [...this.sql().exec(
-        'SELECT ts, ok, ms FROM samples WHERE slug=? AND ts > ? ORDER BY ts', c.slug, now - 86400000)];
-      const buckets90 = [...this.sql().exec(
-        'SELECT hour, total, ups, ms_sum, ms_n, ms_max FROM buckets WHERE slug=? AND hour > ?',
-        c.slug, now - 90 * 86400000)];
+      const history = this.getHistory(c, now);
       const openInc = [...this.sql().exec(
         'SELECT id, started, cause FROM incidents WHERE slug=? AND ended=0 ORDER BY started DESC LIMIT 1', c.slug)];
-      const s = summarize(samples24);
-      const buckets24 = buckets90.filter((b) => b.hour > now - 86400000);
-      const uptime24 = uptime(buckets24)
-        ?? (samples24.length > 0 ? samples24.filter((x) => x.ok).length / samples24.length : null);
       out.push({
         slug: c.slug, name: c.name, grp: c.grp, note: c.note, type: c.type,
         platform: c.platform || '', target: c.type === 'self' ? 'this /health' : c.target,
@@ -279,11 +276,7 @@ export class PulseCore extends DurableObject {
         since: st.since || 0, lastRun: st.last_run || 0,
         lastMs: st.last_ok ? st.last_ms : null, lastCode: st.last_code || null,
         lastErr: st.last_err || '',
-        uptime24,
-        uptime90: uptime(buckets90),
-        lat: { p50: s.p50, p95: s.p95, avg: s.avg, n: s.n },
-        series24: series24(samples24),
-        days90: dayStrip(buckets90, now),
+        ...history,
         openIncident: openInc.length ? { id: openInc[0].id, started: openInc[0].started, cause: openInc[0].cause } : null,
         hasPushToken: c.type === 'push',
       });
@@ -296,6 +289,32 @@ export class PulseCore extends DurableObject {
     }));
     const data = { now, checks: out, incidents };
     this._snapshot = { ts: Date.now(), data };
+    return data;
+  }
+
+  /** 历史统计按北京时间每日按需刷新；持久化避免 DO 休眠/重启重复扫描历史。 */
+  getHistory(c, now) {
+    const cached = [...this.sql().exec(
+      'SELECT updated_at, payload FROM history_cache WHERE slug=?', c.slug)][0];
+    if (cached && dayKey(cached.updated_at) === dayKey(now)) return JSON.parse(cached.payload);
+    const samples24 = [...this.sql().exec(
+      'SELECT ts, ok, ms FROM samples WHERE slug=? AND ts > ? ORDER BY ts', c.slug, now - 86400000)];
+    const buckets90 = [...this.sql().exec(
+      'SELECT hour, total, ups, ms_sum, ms_n, ms_max FROM buckets WHERE slug=? AND hour > ?',
+      c.slug, now - 90 * 86400000)];
+    const s = summarize(samples24);
+    const data = {
+      historyUpdatedAt: now,
+      uptime24: uptime(buckets90.filter((b) => b.hour > now - 86400000))
+        ?? (samples24.length > 0 ? samples24.filter((x) => x.ok).length / samples24.length : null),
+      uptime90: uptime(buckets90),
+      lat: { p50: s.p50, p95: s.p95, avg: s.avg, n: s.n },
+      series24: series24(samples24),
+      days90: dayStrip(buckets90, now),
+    };
+    this.sql().exec(
+      'INSERT INTO history_cache(slug,updated_at,payload) VALUES(?,?,?) ON CONFLICT(slug) DO UPDATE SET updated_at=excluded.updated_at,payload=excluded.payload',
+      c.slug, now, JSON.stringify(data));
     return data;
   }
 
@@ -367,7 +386,7 @@ export class PulseCore extends DurableObject {
   /** dev 重置：清库重同步。 */
   async adminReset() {
     this.ensureSchema();
-    for (const t of ['samples', 'buckets', 'incidents', 'state', 'checks', 'meta']) {
+    for (const t of ['samples', 'buckets', 'incidents', 'state', 'checks', 'meta', 'history_cache']) {
       this.sql().exec(`DELETE FROM ${t}`);
     }
     this._snapshot = null;
@@ -397,7 +416,7 @@ function normalizeCheck(c) {
     slug: c.slug, name: c.name, grp: c.grp, type: c.type, target: c.target || '',
     platform: c.platform || '',
     method: c.method || 'GET', accept: c.accept || [200], keyword: c.keyword || '',
-    interval_s: c.interval_s || 60, timeout_s: c.timeout_s ?? 10,
+    interval_s: c.interval_s ?? c.interval ?? 60, timeout_s: c.timeout_s ?? c.timeout ?? 10,
     follow_redirects: c.follow_redirects === 0 ? 0 : 1, enabled: c.enabled === 0 ? 0 : 1,
     note: c.note || '',
   };

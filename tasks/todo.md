@@ -70,3 +70,12 @@
 - [ ] newapi / n8n-claw 修复后把 src/checks.js 里 enabled 改 1
 - [ ] 事件备注（ack + root cause 手工标注）
 - [ ] 多地域拨测（多 Worker 部署 + 来源标记）——若单边缘误报成为实际问题再做
+
+## 2026-09-07 · Durable Objects rows_read 超额修复
+
+- [x] 邮件与线上定位：唯一 namespace pulse_PulseCore；清理计划 SCAN samples；rss/nav 实际均60s。
+- [x] 清理时间索引与 interval/timeout/last_run 修复 → verify: 真实 workerd SQL rowsRead 与调度回归测试。
+- [x] 按用户选择，历史统计北京时间每日按需更新并持久化，状态保持20s快照 → verify: 同日/跨日/重启缓存与即时状态测试。
+- [ ] 测试、独立审查、部署 → verify: 当前生产版本、API、线上索引与正确间隔。
+
+验证：真实 workerd 回归 RED→GREEN；清理样本读取 2881→2 行，同日/重建实例/tick 后历史读取 0 行。`npm test` 40/40；`wrangler deploy --dry-run` 通过。部署前检查仅涉及本次额度修复5个文件。
