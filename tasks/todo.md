@@ -76,6 +76,9 @@
 - [x] 邮件与线上定位：唯一 namespace pulse_PulseCore；清理计划 SCAN samples；rss/nav 实际均60s。
 - [x] 清理时间索引与 interval/timeout/last_run 修复 → verify: 真实 workerd SQL rowsRead 与调度回归测试。
 - [x] 按用户选择，历史统计北京时间每日按需更新并持久化，状态保持20s快照 → verify: 同日/跨日/重启缓存与即时状态测试。
-- [ ] 测试、独立审查、部署 → verify: 当前生产版本、API、线上索引与正确间隔。
+- [x] 测试与部署：40/40，部署版本 155a2ccc-8f5f-479a-9ef1-c78696893347。
+- [ ] 生产恢复验收 → BLOCKED: /api/status HTTP 500 与 Data Studio 同时报 Exceeded allowed rows read in Durable Objects free tier；需额度重置或用户确认升级。独立测试代理完成RED，但独立终审因代理额度不可用未完成；已人工检查diff。
 
 验证：真实 workerd 回归 RED→GREEN；清理样本读取 2881→2 行，同日/重建实例/tick 后历史读取 0 行。`npm test` 40/40；`wrangler deploy --dry-run` 通过。部署前检查仅涉及本次额度修复5个文件。
+
+生产状态（2026-09-07）：代码提交 bcbec36 已推送 origin/main；未升级套餐。当前免费额度已耗尽，按平台每日00:00 UTC规则下一次重置为北京时间2026-09-08 08:00。线上索引、间隔、每日统计及探测自续仍需恢复后核验，不能把部署成功当作服务已恢复。
