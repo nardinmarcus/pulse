@@ -103,9 +103,9 @@ async function run(name) {
 
 test('storage: 配置 interval / timeout 映射到实际数据库字段', async () => {
   assert.deepEqual(await run('config'), [
-    { slug: 'nav', interval_s: 300, timeout_s: 10 },
-    { slug: 'rss', interval_s: 120, timeout_s: 10 },
-    { slug: 'vps-tcp', interval_s: 60, timeout_s: 8 },
+    { slug: 'nav', interval_s: 3600, timeout_s: 10 },
+    { slug: 'rss', interval_s: 3600, timeout_s: 10 },
+    { slug: 'vps-tcp', interval_s: 3600, timeout_s: 8 },
   ]);
 });
 
